@@ -28,6 +28,8 @@ package net.pwall.json
 import kotlin.reflect.KProperty
 import kotlin.reflect.full.staticProperties
 import kotlin.reflect.jvm.isAccessible
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.channels.ChannelIterator
 
 import java.math.BigDecimal
 import java.math.BigInteger
@@ -66,6 +68,10 @@ import net.pwall.util.pipeline.outputLong
 object JSONCoStringify {
 
     suspend fun IntCoAcceptor<*>.outputJSON(obj: Any?, config: JSONConfig = JSONConfig.defaultConfig) {
+        outputJSON(obj, config, mutableSetOf())
+    }
+
+    private suspend fun IntCoAcceptor<*>.outputJSON(obj: Any?, config: JSONConfig, references: MutableSet<Any>) {
 
         if (obj == null) {
             output("null")
@@ -91,11 +97,11 @@ object JSONCoStringify {
                 outputJSONChar(obj)
                 output('"')
             }
-            is Number -> outputJSONNumber(obj, config)
+            is Number -> outputJSONNumber(obj, config, references)
             is Boolean -> output(if (obj) "true" else "false")
-            is Array<*> -> outputJSONArray(obj, config)
-            is Pair<*, *> -> outputJSONPair(obj, config)
-            is Triple<*, *, *> -> outputJSONTriple(obj, config)
+            is Array<*> -> outputJSONArray(obj, config, references)
+            is Pair<*, *> -> outputJSONPair(obj, config, references)
+            is Triple<*, *, *> -> outputJSONTriple(obj, config, references)
             else -> {
                 findToJSON(obj::class)?.let {
                     try {
@@ -106,13 +112,14 @@ object JSONCoStringify {
                         throw JSONException("Error in custom toJSON - ${obj::class.simpleName}", e)
                     }
                 }
-                outputJSONObject(obj, config)
+                outputJSONObject(obj, config, references)
             }
         }
 
     }
 
-    private suspend fun IntCoAcceptor<*>.outputJSONNumber(number: Number, config: JSONConfig) {
+    private suspend fun IntCoAcceptor<*>.outputJSONNumber(number: Number, config: JSONConfig,
+            references: MutableSet<Any>) {
         when (number) {
             is Int -> outputInt(number)
             is Short, is Byte -> outputInt(number.toInt())
@@ -136,11 +143,12 @@ object JSONCoStringify {
                 else
                     output(number.toString())
             }
-            else -> outputJSONObject(number, config)
+            else -> outputJSONObject(number, config, references)
         }
     }
 
-    private suspend fun IntCoAcceptor<*>.outputJSONArray(array: Array<*>, config: JSONConfig) {
+    private suspend fun IntCoAcceptor<*>.outputJSONArray(array: Array<*>, config: JSONConfig,
+            references: MutableSet<Any>) {
         if (array.isArrayOf<Char>()) {
             output('"')
             for (ch in array)
@@ -153,39 +161,42 @@ object JSONCoStringify {
                 for (i in array.indices) {
                     if (i > 0)
                         output(',')
-                    outputJSON(array[i], config)
+                    outputJSON(array[i], config, references)
                 }
             }
             output(']')
         }
     }
 
-    private suspend fun IntCoAcceptor<*>.outputJSONPair(pair: Pair<*, *>, config: JSONConfig) {
+    private suspend fun IntCoAcceptor<*>.outputJSONPair(pair: Pair<*, *>, config: JSONConfig,
+            references: MutableSet<Any>) {
         output('[')
-        outputJSON(pair.first, config)
+        outputJSON(pair.first, config, references)
         output(',')
-        outputJSON(pair.second, config)
+        outputJSON(pair.second, config, references)
         output(']')
     }
 
-    private suspend fun IntCoAcceptor<*>.outputJSONTriple(triple: Triple<*, *, *>, config: JSONConfig) {
+    private suspend fun IntCoAcceptor<*>.outputJSONTriple(triple: Triple<*, *, *>, config: JSONConfig,
+            references: MutableSet<Any>) {
         output('[')
-        outputJSON(triple.first, config)
+        outputJSON(triple.first, config, references)
         output(',')
-        outputJSON(triple.second, config)
+        outputJSON(triple.second, config, references)
         output(',')
-        outputJSON(triple.third, config)
+        outputJSON(triple.third, config, references)
         output(']')
     }
 
-    private suspend fun IntCoAcceptor<*>.outputJSONObject(obj: Any, config: JSONConfig) {
+    private suspend fun IntCoAcceptor<*>.outputJSONObject(obj: Any, config: JSONConfig, references: MutableSet<Any>) {
         when (obj) {
-            is Iterable<*> -> outputJSONIterator(obj.iterator(), config)
-            is Iterator<*> -> outputJSONIterator(obj, config)
-            is Sequence<*> -> outputJSONIterator(obj.iterator(), config)
-            is Enumeration<*> -> outputJSONEnumeration(obj, config)
-            is Map<*, *> -> outputJSONMap(obj, config)
-            // Channel? Flow?
+            is Iterable<*> -> outputJSONIterator(obj.iterator(), config, references)
+            is Iterator<*> -> outputJSONIterator(obj, config, references)
+            is Sequence<*> -> outputJSONIterator(obj.iterator(), config, references)
+            is Enumeration<*> -> outputJSONEnumeration(obj, config, references)
+            is Map<*, *> -> outputJSONMap(obj, config, references)
+            is Channel<*> -> outputJSONIterator(obj.iterator(), config, references)
+            // Flow?
             is Enum<*>,
             is java.sql.Date,
             is java.sql.Time,
@@ -207,65 +218,74 @@ object JSONCoStringify {
             is Date -> outputJSONString(formatCalendar(Calendar.getInstance().apply { time = obj }))
             is BitSet -> outputJSONBitSet(obj)
             else -> {
-                output('{')
-                var continuation = false
-                val objClass = obj::class
-                if (objClass.isSealedSubclass()) {
-                    outputJSONString(config.sealedClassDiscriminator)
-                    output(':')
-                    outputJSONString(objClass.simpleName ?: "null")
-                    continuation = true
-                }
-                val includeAll = config.hasIncludeAllPropertiesAnnotation(objClass.annotations)
-                val statics: Collection<KProperty<*>> = objClass.staticProperties
-                if (objClass.isData && objClass.constructors.isNotEmpty()) {
-                    // data classes will be a frequent use of serialization, so optimise for them
-                    val constructor = objClass.constructors.first()
-                    for (parameter in constructor.parameters) {
-                        val member = objClass.members.find { it.name == parameter.name }
-                        if (member is KProperty<*>)
-                            continuation = outputUsingGetter(member, parameter.annotations, obj, config, includeAll,
-                                    continuation)
+                try {
+                    references.add(obj)
+                    output('{')
+                    var continuation = false
+                    val objClass = obj::class
+                    if (objClass.isSealedSubclass()) {
+                        outputJSONString(config.sealedClassDiscriminator)
+                        output(':')
+                        outputJSONString(objClass.simpleName ?: "null")
+                        continuation = true
                     }
-                    // now check whether there are any more properties not in constructor
-                    for (member in objClass.members) {
-                        if (member is KProperty<*> && !statics.contains(member) &&
-                                !constructor.parameters.any { it.name == member.name })
-                            continuation = outputUsingGetter(member, member.annotations, obj, config, includeAll,
-                                    continuation)
-                    }
-                }
-                else {
-                    for (member in objClass.members) {
-                        if (member is KProperty<*> && !statics.contains(member)) {
-                            val combinedAnnotations = ArrayList(member.annotations)
-                            objClass.constructors.firstOrNull()?.parameters?.find { it.name == member.name }?.let {
-                                combinedAnnotations.addAll(it.annotations)
-                            }
-                            continuation = outputUsingGetter(member, combinedAnnotations, obj, config, includeAll,
-                                    continuation)
+                    val includeAll = config.hasIncludeAllPropertiesAnnotation(objClass.annotations)
+                    val statics: Collection<KProperty<*>> = objClass.staticProperties
+                    if (objClass.isData && objClass.constructors.isNotEmpty()) {
+                        // data classes will be a frequent use of serialization, so optimise for them
+                        val constructor = objClass.constructors.first()
+                        for (parameter in constructor.parameters) {
+                            val member = objClass.members.find { it.name == parameter.name }
+                            if (member is KProperty<*>)
+                                continuation = outputUsingGetter(member, parameter.annotations, obj, config, references,
+                                        includeAll, continuation)
+                        }
+                        // now check whether there are any more properties not in constructor
+                        for (member in objClass.members) {
+                            if (member is KProperty<*> && !statics.contains(member) &&
+                                    !constructor.parameters.any { it.name == member.name })
+                                continuation = outputUsingGetter(member, member.annotations, obj, config, references,
+                                        includeAll, continuation)
                         }
                     }
+                    else {
+                        for (member in objClass.members) {
+                            if (member is KProperty<*> && !statics.contains(member)) {
+                                val combinedAnnotations = ArrayList(member.annotations)
+                                objClass.constructors.firstOrNull()?.parameters?.find { it.name == member.name }?.let {
+                                    combinedAnnotations.addAll(it.annotations)
+                                }
+                                continuation = outputUsingGetter(member, combinedAnnotations, obj, config, references,
+                                        includeAll, continuation)
+                            }
+                        }
+                    }
+                    output('}')
                 }
-                output('}')
+                finally {
+                    references.remove(obj)
+                }
             }
         }
     }
 
     private suspend fun IntCoAcceptor<*>.outputUsingGetter(member: KProperty<*>, annotations: List<Annotation>?,
-            obj: Any, config: JSONConfig, includeAll: Boolean, continuation: Boolean): Boolean {
+            obj: Any, config: JSONConfig, references: MutableSet<Any>, includeAll: Boolean, continuation: Boolean):
+            Boolean {
         if (!config.hasIgnoreAnnotation(annotations)) {
             val name = config.findNameFromAnnotation(annotations) ?: member.name
             val wasAccessible = member.isAccessible
             member.isAccessible = true
             try {
                 val v = member.getter.call(obj)
+                if (v != null && v in references)
+                    throw JSONException("Circular reference: field ${member.name} in ${obj::class.simpleName}")
                 if (v != null || config.hasIncludeIfNullAnnotation(annotations) || config.includeNulls || includeAll) {
                     if (continuation)
                         output(',')
                     outputJSONString(name)
                     output(':')
-                    outputJSON(v, config)
+                    outputJSON(v, config, references)
                     return true
                 }
             }
@@ -282,11 +302,12 @@ object JSONCoStringify {
         return continuation
     }
 
-    private suspend fun IntCoAcceptor<*>.outputJSONIterator(iterator: Iterator<*>, config: JSONConfig) {
+    private suspend fun IntCoAcceptor<*>.outputJSONIterator(iterator: Iterator<*>, config: JSONConfig,
+            references: MutableSet<Any>) {
         output('[')
         if (iterator.hasNext()) {
             while (true) {
-                outputJSON(iterator.next(), config)
+                outputJSON(iterator.next(), config, references)
                 if (!iterator.hasNext())
                     break
                 output(',')
@@ -295,11 +316,26 @@ object JSONCoStringify {
         output(']')
     }
 
-    private suspend fun IntCoAcceptor<*>.outputJSONEnumeration(enumeration: Enumeration<*>, config: JSONConfig) {
+    private suspend fun IntCoAcceptor<*>.outputJSONIterator(iterator: ChannelIterator<*>, config: JSONConfig,
+            references: MutableSet<Any>) {
+        output('[')
+        if (iterator.hasNext()) {
+            while (true) {
+                outputJSON(iterator.next(), config, references)
+                if (!iterator.hasNext())
+                    break
+                output(',')
+            }
+        }
+        output(']')
+    }
+
+    private suspend fun IntCoAcceptor<*>.outputJSONEnumeration(enumeration: Enumeration<*>, config: JSONConfig,
+            references: MutableSet<Any>) {
         output('[')
         if (enumeration.hasMoreElements()) {
             while (true) {
-                outputJSON(enumeration.nextElement(), config)
+                outputJSON(enumeration.nextElement(), config, references)
                 if (!enumeration.hasMoreElements())
                     break
                 output(',')
@@ -308,7 +344,8 @@ object JSONCoStringify {
         output(']')
     }
 
-    private suspend fun IntCoAcceptor<*>.outputJSONMap(map: Map<*, *>, config: JSONConfig) {
+    private suspend fun IntCoAcceptor<*>.outputJSONMap(map: Map<*, *>, config: JSONConfig,
+            references: MutableSet<Any>) {
         output('{')
         map.entries.iterator().let {
             if (it.hasNext()) {
@@ -316,7 +353,7 @@ object JSONCoStringify {
                     val ( key, value ) = it.next()
                     outputJSONString(key.toString())
                     output(':')
-                    outputJSON(value, config)
+                    outputJSON(value, config, references)
                     if (!it.hasNext())
                         break
                     output(',')

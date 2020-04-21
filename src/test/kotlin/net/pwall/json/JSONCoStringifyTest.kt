@@ -26,9 +26,12 @@
 package net.pwall.json
 
 import kotlin.test.Test
+import kotlin.test.assertFailsWith
 import kotlin.test.expect
 
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.channels.Channel
 
 import java.math.BigDecimal
 import java.math.BigInteger
@@ -756,6 +759,46 @@ class JSONCoStringifyTest {
             property("field2", null)
             property("field3", "gamma")
         }
+    }
+
+    @Test fun `should stringify a sequence of objects coming from a Channel`() = runBlocking {
+        val stringCoAcceptor = StringCoAcceptor()
+        val channel = Channel<Dummy1>()
+        val job = launch {
+            channel.send(Dummy1("first", 123))
+            channel.send(Dummy1("second", 456))
+            channel.send(Dummy1("third", 789))
+            channel.close()
+        }
+        stringCoAcceptor.outputJSON(channel)
+        expectJSON(stringCoAcceptor.result) {
+            count(3)
+            item(0) {
+                property("field1", "first")
+                property("field2", 123)
+            }
+            item(1) {
+                property("field1", "second")
+                property("field2", 456)
+            }
+            item(2) {
+                property("field1", "third")
+                property("field2", 789)
+            }
+        }
+        job.join()
+    }
+
+    @Test fun `should fail on use of circular reference`() = runBlocking {
+        val stringCoAcceptor = StringCoAcceptor()
+        val circular1 = Circular1()
+        val circular2 = Circular2()
+        circular1.ref = circular2
+        circular2.ref = circular1
+        val exception = assertFailsWith<JSONException> {
+            stringCoAcceptor.outputJSON(circular1)
+        }
+        expect("Circular reference: field ref in Circular2") { exception.message }
     }
 
 }
