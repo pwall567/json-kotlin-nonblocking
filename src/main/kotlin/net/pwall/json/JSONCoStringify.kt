@@ -33,27 +33,15 @@ import kotlinx.coroutines.channels.ChannelIterator
 
 import java.math.BigDecimal
 import java.math.BigInteger
-import java.net.URI
-import java.net.URL
-import java.time.Duration
-import java.time.Instant
-import java.time.LocalDate
-import java.time.LocalDateTime
-import java.time.OffsetDateTime
-import java.time.OffsetTime
-import java.time.Period
-import java.time.Year
-import java.time.YearMonth
-import java.time.ZonedDateTime
 import java.util.BitSet
 import java.util.Calendar
 import java.util.Date
 import java.util.Enumeration
-import java.util.UUID
 
 import net.pwall.json.JSONSerializerFunctions.findToJSON
-import net.pwall.json.JSONSerializerFunctions.formatCalendar
+import net.pwall.json.JSONSerializerFunctions.formatISO8601
 import net.pwall.json.JSONSerializerFunctions.isSealedSubclass
+import net.pwall.json.JSONSerializerFunctions.isToStringClass
 import net.pwall.util.pipeline.IntCoAcceptor
 import net.pwall.util.pipeline.output
 import net.pwall.util.pipeline.outputHex
@@ -102,18 +90,7 @@ object JSONCoStringify {
             is Array<*> -> outputJSONArray(obj, config, references)
             is Pair<*, *> -> outputJSONPair(obj, config, references)
             is Triple<*, *, *> -> outputJSONTriple(obj, config, references)
-            else -> {
-                findToJSON(obj::class)?.let {
-                    try {
-                        outputJSONValue(it.call(obj))
-                        return
-                    }
-                    catch (e: Exception) {
-                        throw JSONException("Error in custom toJSON - ${obj::class.simpleName}", e)
-                    }
-                }
-                outputJSONObject(obj, config, references)
-            }
+            else -> outputJSONObject(obj, config, references)
         }
 
     }
@@ -189,6 +166,20 @@ object JSONCoStringify {
     }
 
     private suspend fun IntCoAcceptor<*>.outputJSONObject(obj: Any, config: JSONConfig, references: MutableSet<Any>) {
+        val objClass = obj::class
+        if (objClass.isToStringClass() || obj is Enum<*>) {
+            outputJSONString(obj.toString())
+            return
+        }
+        objClass.findToJSON()?.let {
+            try {
+                outputJSONValue(it.call(obj))
+                return
+            }
+            catch (e: Exception) {
+                throw JSONException("Error in custom toJSON - ${objClass.simpleName}", e)
+            }
+        }
         when (obj) {
             is Iterable<*> -> outputJSONIterator(obj.iterator(), config, references)
             is Iterator<*> -> outputJSONIterator(obj, config, references)
@@ -197,32 +188,14 @@ object JSONCoStringify {
             is Map<*, *> -> outputJSONMap(obj, config, references)
             is Channel<*> -> outputJSONIterator(obj.iterator(), config, references)
             // Flow?
-            is Enum<*>,
-            is java.sql.Date,
-            is java.sql.Time,
-            is java.sql.Timestamp,
-            is Instant,
-            is LocalDate,
-            is LocalDateTime,
-            is OffsetTime,
-            is OffsetDateTime,
-            is ZonedDateTime,
-            is Year,
-            is YearMonth,
-            is Duration,
-            is Period,
-            is URI,
-            is URL,
-            is UUID -> outputJSONString(obj.toString())
-            is Calendar -> outputJSONString(formatCalendar(obj))
-            is Date -> outputJSONString(formatCalendar(Calendar.getInstance().apply { time = obj }))
+            is Calendar -> outputJSONString(obj.formatISO8601())
+            is Date -> outputJSONString((Calendar.getInstance().apply { time = obj }).formatISO8601())
             is BitSet -> outputJSONBitSet(obj)
             else -> {
                 try {
                     references.add(obj)
                     output('{')
                     var continuation = false
-                    val objClass = obj::class
                     if (objClass.isSealedSubclass()) {
                         outputJSONString(config.sealedClassDiscriminator)
                         output(':')

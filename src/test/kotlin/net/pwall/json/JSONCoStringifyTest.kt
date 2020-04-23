@@ -55,6 +55,8 @@ import java.util.UUID
 import net.pwall.json.JSONCoStringify.outputJSON
 import net.pwall.json.test.JSONExpect.Companion.expectJSON
 import net.pwall.util.pipeline.StringCoAcceptor
+import java.time.LocalTime
+import java.time.MonthDay
 
 class JSONCoStringifyTest {
 
@@ -453,6 +455,14 @@ class JSONCoStringifyTest {
         expect("\"$str\"") { stringCoAcceptor.result }
     }
 
+    @Test fun `should stringify a LocalTime`() = runBlocking {
+        val stringCoAcceptor = StringCoAcceptor()
+        val str = "00:09:26.123"
+        val localTime = LocalTime.parse(str)
+        stringCoAcceptor.outputJSON(localTime)
+        expect("\"$str\"") { stringCoAcceptor.result }
+    }
+
     @Test fun `should stringify an OffsetTime`() = runBlocking {
         val stringCoAcceptor = StringCoAcceptor()
         val str = "10:15:06.543+10:00"
@@ -490,6 +500,14 @@ class JSONCoStringifyTest {
         val str = "2020-04"
         val yearMonth = YearMonth.parse(str)
         stringCoAcceptor.outputJSON(yearMonth)
+        expect("\"$str\"") { stringCoAcceptor.result }
+    }
+
+    @Test fun `should stringify a MonthDay`() = runBlocking {
+        val stringCoAcceptor = StringCoAcceptor()
+        val str = "--04-23"
+        val monthDay = MonthDay.parse(str)
+        stringCoAcceptor.outputJSON(monthDay)
         expect("\"$str\"") { stringCoAcceptor.result }
     }
 
