@@ -30,6 +30,8 @@ import kotlin.reflect.full.staticProperties
 import kotlin.reflect.jvm.isAccessible
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.ChannelIterator
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.collect
 
 import java.math.BigDecimal
 import java.math.BigInteger
@@ -55,6 +57,13 @@ import net.pwall.util.pipeline.outputLong
  */
 object JSONCoStringify {
 
+    /**
+     * Output an object in JSON form to a non-blocking acceptor.
+     *
+     * @receiver        an [IntCoAcceptor] to receive the JSON
+     * @param   obj     the object
+     * @param   config  an optional [JSONConfig] to customise the conversion
+     */
     suspend fun IntCoAcceptor<*>.outputJSON(obj: Any?, config: JSONConfig = JSONConfig.defaultConfig) {
         outputJSON(obj, config, mutableSetOf())
     }
@@ -186,8 +195,8 @@ object JSONCoStringify {
             is Sequence<*> -> outputJSONIterator(obj.iterator(), config, references)
             is Enumeration<*> -> outputJSONEnumeration(obj, config, references)
             is Map<*, *> -> outputJSONMap(obj, config, references)
-            is Channel<*> -> outputJSONIterator(obj.iterator(), config, references)
-            // Flow?
+            is Channel<*> -> outputJSONChannel(obj.iterator(), config, references)
+            is Flow<*> -> outputJSONFlow(obj, config, references)
             is Calendar -> outputJSONString(obj.formatISO8601())
             is Date -> outputJSONString((Calendar.getInstance().apply { time = obj }).formatISO8601())
             is BitSet -> outputJSONBitSet(obj)
@@ -289,12 +298,13 @@ object JSONCoStringify {
         output(']')
     }
 
-    private suspend fun IntCoAcceptor<*>.outputJSONIterator(iterator: ChannelIterator<*>, config: JSONConfig,
+    private suspend fun IntCoAcceptor<*>.outputJSONChannel(iterator: ChannelIterator<*>, config: JSONConfig,
             references: MutableSet<Any>) {
         output('[')
         if (iterator.hasNext()) {
             while (true) {
                 outputJSON(iterator.next(), config, references)
+                flush()
                 if (!iterator.hasNext())
                     break
                 output(',')
@@ -313,6 +323,20 @@ object JSONCoStringify {
                     break
                 output(',')
             }
+        }
+        output(']')
+    }
+
+    private suspend fun IntCoAcceptor<*>.outputJSONFlow(flow: Flow<*>, config: JSONConfig,
+            references: MutableSet<Any>) {
+        output('[')
+        var continuation = false
+        flow.collect {
+            if (continuation)
+                output(',')
+            outputJSON(it, config, references)
+            flush()
+            continuation = true
         }
         output(']')
     }

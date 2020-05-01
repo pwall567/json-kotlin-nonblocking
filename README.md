@@ -18,25 +18,25 @@ This a very much a work in progress; stay tuned for more developments (and with 
 
 ## Dependency Specification
 
-The latest version of the library is 0.3, and it may be obtained from the Maven Central repository.
+The latest version of the library is 0.4, and it may be obtained from the Maven Central repository.
 
 ### Maven
 ```xml
     <dependency>
       <groupId>net.pwall.json</groupId>
       <artifactId>json-kotlin-nonblocking</artifactId>
-      <version>0.3</version>
+      <version>0.4</version>
     </dependency>
 ```
 ### Gradle
 ```groovy
-    implementation 'net.pwall.json:json-kotlin-nonblocking:0.3'
+    implementation 'net.pwall.json:json-kotlin-nonblocking:0.4'
 ```
 ### Gradle (kts)
 ```kotlin
-    implementation("net.pwall.json:json-kotlin-nonblocking:0.3")
+    implementation("net.pwall.json:json-kotlin-nonblocking:0.4")
 ```
 
 Peter Wall
 
-2020-04-23
+2020-05-01
