@@ -61,12 +61,12 @@
     <dependency>
       <groupId>net.pwall.json</groupId>
       <artifactId>jsonutil</artifactId>
-      <version>3.1</version>
+      <version>5.0</version>
     </dependency>
     <dependency>
       <groupId>net.pwall.json</groupId>
       <artifactId>json-kotlin</artifactId>
-      <version>3.11</version>
+      <version>4.2</version>
     </dependency>
     <dependency>
       <groupId>net.pwall.util</groupId>
@@ -89,13 +89,13 @@
     <dependency>
       <groupId>net.pwall.json</groupId>
       <artifactId>json-kotlin-test-classes</artifactId>
-      <version>1.4</version>
+      <version>1.6</version>
       <scope>test</scope>
     </dependency>
     <dependency>
       <groupId>net.pwall.json</groupId>
       <artifactId>json-kotlin-test</artifactId>
-      <version>0.8</version>
+      <version>0.10</version>
       <scope>test</scope>
     </dependency>
   </dependencies>

@@ -2,6 +2,14 @@
 
 The format is based on [Keep a Changelog](http://keepachangelog.com/).
 
+## [0.6] - 2021-04-20
+### Changed
+- `pom.xml`: Bumped dependency versions
+
+## [0.5] - 2020-09-20
+### Changed
+- `pom.xml`: Bumped dependency versions
+
 ## [0.4] - 2020-05-01
 ### Changed
 - `JSONCoStringify`: Added handling of `Flow`

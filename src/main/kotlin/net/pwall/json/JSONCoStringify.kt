@@ -377,9 +377,9 @@ object JSONCoStringify {
     private suspend fun IntCoAcceptor<*>.outputJSONValue(jsonValue: JSONValue?) {
         when (jsonValue) {
             null -> output("null")
-            is JSONString -> outputJSONString(jsonValue.get())
-            is JSONInt -> outputInt(jsonValue.get())
-            is JSONLong -> outputLong(jsonValue.get())
+            is JSONString -> outputJSONString(jsonValue.value)
+            is JSONInt -> outputInt(jsonValue.value)
+            is JSONLong -> outputLong(jsonValue.value)
             is JSONBoolean,
             is JSONFloat,
             is JSONDouble,
