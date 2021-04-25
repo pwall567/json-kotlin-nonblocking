@@ -583,7 +583,12 @@ class JSONCoStringifyTest {
         }
         val date = cal.time
         stringCoAcceptor.outputJSON(date)
-        expect("\"2019-04-25T18:52:47.123+10:00\"") { stringCoAcceptor.result }
+        // NOTE - Java implementations are inconsistent - some will normalise the time to UTC
+        // while others preserve the time zone as supplied.  The test below allows for either.
+        val expected1 = "\"2019-04-25T18:52:47.123+10:00\""
+        val expected2 = "\"2019-04-25T08:52:47.123Z\""
+        val result = stringCoAcceptor.result
+        expect(true) { result == expected1 || result == expected2 }
     }
 
     @Test fun `should stringify a BitSet`() = runBlocking {
