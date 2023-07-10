@@ -31,7 +31,6 @@ import kotlin.reflect.jvm.isAccessible
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.ChannelIterator
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.collect
 
 import java.math.BigDecimal
 import java.math.BigInteger
@@ -44,11 +43,11 @@ import net.pwall.json.JSONSerializerFunctions.findToJSON
 import net.pwall.json.JSONSerializerFunctions.formatISO8601
 import net.pwall.json.JSONSerializerFunctions.isSealedSubclass
 import net.pwall.json.JSONSerializerFunctions.isToStringClass
-import net.pwall.util.pipeline.IntCoAcceptor
-import net.pwall.util.pipeline.output
-import net.pwall.util.pipeline.outputHex
-import net.pwall.util.pipeline.outputInt
-import net.pwall.util.pipeline.outputLong
+import net.pwall.pipeline.IntCoAcceptor
+import net.pwall.pipeline.output
+import net.pwall.pipeline.outputHex
+import net.pwall.pipeline.outputInt
+import net.pwall.pipeline.outputLong
 
 /**
  * Non-blocking JSON Serialization.
@@ -441,7 +440,7 @@ object JSONCoStringify {
             '\u000C' -> output("\\f")
             else -> {
                 output("\\u")
-                outputHex(ch.toShort())
+                outputHex(ch.code.toShort())
             }
         }
     }

@@ -2,6 +2,14 @@
 
 The format is based on [Keep a Changelog](http://keepachangelog.com/).
 
+## [0.7.1] - 2023-07-10
+### Changed
+- `pom.xml`: Rebuild because of upload error
+
+## [0.7] - 2023-07-10
+### Changed
+- `pom.xml`: Updated dependency versions
+
 ## [0.6] - 2021-04-25
 ### Changed
 - `pom.xml`: Bumped dependency versions
